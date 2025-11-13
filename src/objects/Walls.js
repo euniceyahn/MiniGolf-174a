@@ -15,31 +15,74 @@ export function createWall() {
     [colorMap, normalMap, roughnessMap, displacementMap, aoMap].forEach(tex => {
         tex.wrapS = THREE.RepeatWrapping;
         tex.wrapT = THREE.RepeatWrapping;
-        tex.repeat.set(35, 0.25); // adjust scale
+        tex.repeat.set(7, 0.1); // adjust scale
     });
 
-    const wallgeometry = new THREE.BoxGeometry(70, 1, 1); 
-    // const wallmaterial = new THREE.MeshStandardMaterial({
-    //     map: colorMap,
-    //     normalMap: normalMap,
-    //     roughnessMap: roughnessMap,
-    //     displacementMap: displacementMap,
-    //     displacementScale: 0.001, 
-    //     aoMap: aoMap,
-    //     side: THREE.DoubleSide,
-    // });
-    const wallmaterial = new THREE.MeshStandardMaterial({
-  map: colorMap,
-  side: THREE.DoubleSide,
-});
+    let positions = [
+        {x:0, z:45},
+        {x: 44.5, z:30.5},
+        {x:30, z:15},
+        {x:15, z:-14.5},
+        {x:-14.5, z:-45},
+        {x:-44.5, z:-0.5}
+    ]
 
-    const wall1 = new THREE.Mesh(wallgeometry, wallmaterial);
-    wall1.position.set(10,0,10)
+    let dimensions = [
+        {x:90, z:1},
+        {x:1, z:30},
+        {x:30, z:1},
+        {x:1, z:60},
+        {x:60, z:1},
+        {x:1, z:90}
+    ]
+    let walls = [];
+    let geometries = [];
+
+
+
+    const wall1geometry = new THREE.BoxGeometry(80, 1, 1); 
+
+    const wallmaterial = new THREE.MeshStandardMaterial({
+        map: colorMap,
+        side: THREE.DoubleSide,
+    });
+
+    for (let i = 0; i <6; i++) {
+        geometries.push(new THREE.BoxGeometry(dimensions[i].x, 1, dimensions[i].z))
+    }
+
+    for (let i = 0; i<6; i++) {
+        const wall = new THREE.Mesh(geometries[i], wallmaterial);
+        wall.position.set(positions[i].x, 1, positions[i].z);
+
+        geometries[i].attributes.uv2 = geometries[i].attributes.uv;
+
+        walls.push(wall);
+
+    }
+
+    return walls;
+
+
+
+// geometries[0] = new THREE.BoxGeometry(dimensions[0].x, 1, dimensions[0].z);
+// const testwall = new THREE.Mesh(geometries[0], wallmaterial);
+// testwall.position.set(positions[0].x, 1, positions[0].z);
+// testwall.position.set(0, 1, 0);
+
+
+
+    const wall1 = new THREE.Mesh(wall1geometry, wallmaterial);
+    wall1.position.set(10,1,10)
     // ground.rotation.x = -Math.PI / 2;
     // ground.receiveShadow = true;
 
     // Set uv2 for AO map
-    wallgeometry.attributes.uv2 = wallgeometry.attributes.uv;
+    // wall1geometry.attributes.uv2 = wall1geometry.attributes.uv;
+    // geometries[0].attributes.uv2 = geometries[0].attributes.uv;
+    // return testwall;
 
-    return wall1;
+    // return wall1;
+
+
 }

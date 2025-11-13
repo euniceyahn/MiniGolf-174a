@@ -27,7 +27,7 @@ const ground = createGround();
 scene.add(ground);
 
 const walls = createWall();
-scene.add(walls);
+walls.forEach(wall => scene.add(wall));
 
 // const controls = new OrbitControls(camera, renderer.domElement);
 camera.position.set(0, 2, 0); // Where the camera is.
