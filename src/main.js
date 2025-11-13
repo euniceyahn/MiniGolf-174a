@@ -27,27 +27,31 @@ scene.add(ground);
 const walls = createWall();
 walls.forEach(wall => scene.add(wall));
 
+let mixers = [];
+
 createFlag('/models/golf_flag.glb', {
   position: new THREE.Vector3(30,8,30),
   scale: new THREE.Vector3(5,5,5),
-}).then(model => {
+}).then(({model, mixer}) => {
   scene.add(model)
+  if (mixer) mixers.push(mixer);
 });
 
 camera.position.set(0, 2, 10); 
 
 
-let lastTime = performance.now();
+const clock = new THREE.Clock();
 
-function animate(now) {
+function animate() {
+  requestAnimationFrame(animate);
   
-  const delta = (now-lastTime) / 1000;
-  lastTime = now;
+  const delta = Math.min(clock.getDelta(), 0.05);
+
+
+  mixers.forEach(mixer => mixer.update(delta));
   
   updateCamera(delta); 
   renderer.render(scene, camera);
-
-  requestAnimationFrame(animate);
 }
 
 requestAnimationFrame(animate);
