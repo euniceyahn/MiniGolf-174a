@@ -48,18 +48,28 @@ export function createWall() {
     });
 
     for (let i = 0; i <6; i++) {
-        geometries.push(new THREE.BoxGeometry(dimensions[i].x, 1, dimensions[i].z))
-    }
+        const geometry = new THREE.BoxGeometry(dimensions[i].x, 1, dimensions[i].z);
+        
+        [colorMap, normalMap, roughnessMap, displacementMap, aoMap].forEach(tex => {
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(dimensions[i].z / 10.0, dimensions[i].x / 10.0);
+        });
 
-    for (let i = 0; i<6; i++) {
-        const wall = new THREE.Mesh(geometries[i], wallmaterial);
-        wall.position.set(positions[i].x, 1, positions[i].z);
+        const material = new THREE.MeshStandardMaterial({
+            map:colorMap,
+            side:THREE.DoubleSide,
+        });
 
-        geometries[i].attributes.uv2 = geometries[i].attributes.uv;
+
+        const wall = new THREE.Mesh(geometry, material);
+        wall.position.set(positions[i].x, 0.5, positions[i].z);
+
+        geometry.attributes.uv2 = geometry.attributes.uv;
 
         walls.push(wall);
-
     }
+
 
     return walls;
 
