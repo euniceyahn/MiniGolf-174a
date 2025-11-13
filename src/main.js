@@ -1,10 +1,12 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+// import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { createGround } from './objects/Ground.js';
+import { createWall } from './objects/Walls.js';
+import { createCamera, setupFlyCamera } from './core/Camera.js';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb); // light sky blue
-const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+// const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
 const ambient = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambient);
 
@@ -18,22 +20,30 @@ renderer.setSize( window.innerWidth, window.innerHeight );
 renderer.setAnimationLoop( animate );
 document.body.appendChild( renderer.domElement );
 
-
+const camera = createCamera();
+const { update: updateCamera } = setupFlyCamera(camera, renderer);
 
 const ground = createGround();
 scene.add(ground);
 
-const controls = new OrbitControls(camera, renderer.domElement);
+const walls = createWall();
+scene.add(walls);
+
+// const controls = new OrbitControls(camera, renderer.domElement);
 camera.position.set(0, 2, 0); // Where the camera is.
-controls.target.set(0, 1, 0); // Where the camera is looking towards.
+// controls.target.set(0, 1, 0); // Where the camera is looking towards.
+
+
+let lastTime = performance.now();
 
 function animate() {
+    const now = performance.now();
+    const delta = (now-lastTime) / 1000;
+    lastTime = now;
 
-
-
-	renderer.render( scene, camera );
-    controls.update();
-
+      requestAnimationFrame(animate);
+  updateCamera(delta); // handle mouse + keyboard movement
+  renderer.render(scene, camera);
 }
 
 
