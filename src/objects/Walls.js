@@ -64,6 +64,7 @@ export function createWall() {
 
         const wall = new THREE.Mesh(geometry, material);
         wall.position.set(positions[i].x, 0.5, positions[i].z);
+        
 
         geometry.attributes.uv2 = geometry.attributes.uv;
 

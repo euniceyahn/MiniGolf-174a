@@ -17,7 +17,8 @@ export function setupFlyCamera(camera, renderer) {
   document.addEventListener('keydown', e => (keys[e.code] = true));
   document.addEventListener('keyup', e => (keys[e.code] = false));
 
-  const moveSpeed = 0.01;
+  const moveSpeed = 0.5;
+const velocity = new THREE.Vector3();
   const direction = new THREE.Vector3();
   const right = new THREE.Vector3();
 
@@ -49,7 +50,7 @@ export function setupFlyCamera(camera, renderer) {
   });
 
   // --- Update per frame ---
-  function update() {
+  function update(deltaTime) {
     direction.set(0, 0, -1).applyQuaternion(camera.quaternion);
     direction.y = 0;             // flatten movement horizontally
     direction.normalize();
@@ -68,8 +69,10 @@ export function setupFlyCamera(camera, renderer) {
 
     if (move.lengthSq() > 0) {
       move.normalize().multiplyScalar(moveSpeed);
-      camera.position.add(move);
     }
+    velocity.lerp(move, 0.1);
+
+    camera.position.addScaledVector(velocity, deltaTime * 60);
   }
 
   return { update };
