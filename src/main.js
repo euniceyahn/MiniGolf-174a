@@ -116,8 +116,18 @@ scene.add(cube2);
 const cube3 = createCubeObstacle({ x: 0, y: 1, z: -20 }, { x: 7, y: 2, z: 7 }); 
 scene.add(cube3);
 
+const cube4 = createCubeObstacle({ x: -30, y: 1, z: -20 }, { x: 15, y: 2, z: 7 }); 
+scene.add(cube4);
+
+const cube5 = createCubeObstacle({ x: -30, y: 1, z: 30 }, { x: 15, y: 2, z: 15 }); 
+scene.add(cube5);
+
+const cube6 = createCubeObstacle({ x: -5, y: 1, z: 25 }, { x: 3, y: 2, z: 6 }); 
+scene.add(cube6);
+
+
 // Store cubes for collision detection
-const cubeObstacles = [cube1, cube2, cube3];
+const cubeObstacles = [cube1, cube2, cube3, cube4, cube5, cube6];
 const cubeBoxes = [];
 cubeObstacles.forEach(cube => {
     cube.geometry.computeBoundingBox();
