@@ -66,6 +66,30 @@ powerBarContainer.appendChild(powerBarFill);
 powerBarContainer.appendChild(powerBarLabel);
 document.body.appendChild(powerBarContainer);
 
+// Create score UI
+const scoreContainer = document.createElement('div');
+scoreContainer.style.cssText = `
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 15px;
+  font-family: Arial, sans-serif;
+  font-size: 16px;
+  border-radius: 8px;
+  border: 2px solid white;
+  min-width: 200px;
+`;
+scoreContainer.innerHTML = `
+  <div style="font-size: 18px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid white; padding-bottom: 5px;">SCORE</div>
+  <div>Current Hits: <span id="current-hits">0</span></div>
+  <div>Last Score: <span id="last-hits">-</span></div>
+  <div>Best Score: <span id="best-hits">-</span></div>
+  <div style="margin-top: 10px; font-size: 12px; color: #aaa;">Press P to reset</div>
+`;
+document.body.appendChild(scoreContainer);
+
 const camera = createCamera();
 const { update: updateCamera } = setupFlyCamera(camera, renderer);
 
@@ -91,6 +115,26 @@ scene.add(cube2);
 
 const cube3 = createCubeObstacle({ x: 0, y: 1, z: -20 }, { x: 7, y: 2, z: 7 }); 
 scene.add(cube3);
+
+// Store cubes for collision detection
+const cubeObstacles = [cube1, cube2, cube3];
+const cubeBoxes = [];
+cubeObstacles.forEach(cube => {
+    cube.geometry.computeBoundingBox();
+    const box = new THREE.Box3().setFromObject(cube);
+    cubeBoxes.push(box);
+});
+
+// Create hole at flag position
+const holePosition = new THREE.Vector3(30, 0, 30);
+const holeRadius = 1.5;
+const holeGeometry = new THREE.CircleGeometry(holeRadius, 32);
+const holeMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const hole = new THREE.Mesh(holeGeometry, holeMaterial);
+hole.rotation.x = -Math.PI / 2;
+hole.position.copy(holePosition);
+hole.position.y = 0.01; // Slightly above ground to prevent z-fighting
+scene.add(hole);
 
 let ballMesh = null;
 
@@ -119,14 +163,42 @@ let ballVelocity = new THREE.Vector3(0, 0, 0);
 const maxPower = 2.0; // Maximum shot power
 const chargeRate = 0.001; // Power increase per millisecond
 
+// Game state
+let currentHits = 0;
+let lastHits = null;
+let bestHits = null;
+const ballStartPosition = new THREE.Vector3(3, 1, 10);
+
+// Update UI helper
+function updateScoreUI() {
+  document.getElementById('current-hits').textContent = currentHits;
+  document.getElementById('last-hits').textContent = lastHits !== null ? lastHits : '-';
+  document.getElementById('best-hits').textContent = bestHits !== null ? bestHits : '-';
+}
+
+// Reset turn
+function resetTurn() {
+  if (ballMesh) {
+    ballMesh.position.copy(ballStartPosition);
+    ballVelocity.set(0, 0, 0);
+    currentHits = 0;
+    updateScoreUI();
+  }
+}
+
 // Shoot ball by holding and releasing 'E' key
 window.addEventListener("keydown", (event) => {
   if (event.key === 'e' || event.key === 'E') {
-    if (!isCharging) {
+    if (!isCharging && ballVelocity.length() < 0.001) { // Only allow shooting when ball is stopped
       isCharging = true;
       chargeStartTime = Date.now();
       shotPower = 0;
     }
+  }
+  
+  // Reset with P key
+  if (event.key === 'p' || event.key === 'P') {
+    resetTurn();
   }
 });
 
@@ -141,6 +213,10 @@ window.addEventListener("keyup", (event) => {
 
       ballVelocity.copy(shootDir).multiplyScalar(shotPower);
       shotPower = 0;
+      
+      // Increment hit counter
+      currentHits++;
+      updateScoreUI();
     }
   }
 });
@@ -170,6 +246,23 @@ function updateBallPhysics(delta) {
   const ballRadius = 0.3;
   const ballSphere = new THREE.Sphere(ballMesh.position, ballRadius);
 
+  // Check if ball is in the hole
+  const distanceToHole = ballMesh.position.distanceTo(holePosition);
+  if (distanceToHole < holeRadius && ballVelocity.length() < 0.5) { // Ball must be moving slowly to fall in
+    // Ball scored!
+    lastHits = currentHits;
+    if (bestHits === null || currentHits < bestHits) {
+      bestHits = currentHits;
+    }
+    updateScoreUI();
+    
+    // Reset after a short delay
+    setTimeout(() => {
+      resetTurn();
+    }, 500);
+    return;
+  }
+
   // Clamp ball position to map boundaries (100x100 ground)
   const mapBoundary = 50;
   if (ballMesh.position.x > mapBoundary || ballMesh.position.x < -mapBoundary) {
@@ -181,6 +274,7 @@ function updateBallPhysics(delta) {
     ballVelocity.z *= -0.9; // Bounce back
   }
 
+  // Wall collision detection
   for (let i = 0; i < wallBoxes.length; i++) {
     const wall = wallBoxes[i];
 
@@ -200,6 +294,31 @@ function updateBallPhysics(delta) {
         ballVelocity.z *= -0.9;
         ballMesh.position.z += (ballVelocity.z > 0 ? 1 : -1) * 0.05;
       }
+    }
+  }
+  
+  // Cube obstacle collision detection
+  for (let i = 0; i < cubeBoxes.length; i++) {
+    const cubeBox = new THREE.Box3().setFromObject(cubeObstacles[i]);
+
+    if (cubeBox.intersectsSphere(ballSphere)) {
+      const cubeCenter = new THREE.Vector3();
+      cubeBox.getCenter(cubeCenter);
+      
+      // Calculate collision normal (direction from cube center to ball)
+      const collisionNormal = new THREE.Vector3()
+        .subVectors(ballMesh.position, cubeCenter)
+        .normalize();
+      
+      // Reflect velocity using the formula: v' = v - 2(v·n)n
+      const dotProduct = ballVelocity.dot(collisionNormal);
+      const reflection = collisionNormal.clone().multiplyScalar(2 * dotProduct);
+      ballVelocity.sub(reflection);
+      ballVelocity.multiplyScalar(0.9); // Some energy loss
+      
+      // Push ball out of collision more aggressively
+      const pushOut = collisionNormal.clone().multiplyScalar(0.5);
+      ballMesh.position.add(pushOut);
     }
   }
 }
