@@ -21,6 +21,51 @@ const renderer = new THREE.WebGLRenderer({antialias: true});
 renderer.setSize( window.innerWidth, window.innerHeight );
 document.body.appendChild( renderer.domElement );
 
+// Create power bar UI
+const powerBarContainer = document.createElement('div');
+powerBarContainer.id = 'power-bar-container';
+powerBarContainer.style.cssText = `
+  position: fixed;
+  bottom: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  height: 30px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border: 2px solid white;
+  border-radius: 5px;
+  display: none;
+  overflow: hidden;
+`;
+
+const powerBarFill = document.createElement('div');
+powerBarFill.id = 'power-bar-fill';
+powerBarFill.style.cssText = `
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #00ff00, #ffff00, #ff0000);
+  transition: width 0.05s linear;
+`;
+
+const powerBarLabel = document.createElement('div');
+powerBarLabel.style.cssText = `
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  font-weight: bold;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+  pointer-events: none;
+`;
+powerBarLabel.textContent = 'POWER';
+
+powerBarContainer.appendChild(powerBarFill);
+powerBarContainer.appendChild(powerBarLabel);
+document.body.appendChild(powerBarContainer);
+
 const camera = createCamera();
 const { update: updateCamera } = setupFlyCamera(camera, renderer);
 
@@ -47,8 +92,6 @@ scene.add(cube2);
 const cube3 = createCubeObstacle({ x: 0, y: 1, z: -20 }, { x: 7, y: 2, z: 7 }); 
 scene.add(cube3);
 
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
 let ballMesh = null;
 
 let mixers = [];
@@ -69,42 +112,36 @@ createBall('/models/golfball.glb', {
   scene.add(model);
 });
 
-let isDragging = false;
-let dragStartY = 0;
+let isCharging = false;
+let chargeStartTime = 0;
 let shotPower = 0;
 let ballVelocity = new THREE.Vector3(0, 0, 0);
+const maxPower = 2.0; // Maximum shot power
+const chargeRate = 0.001; // Power increase per millisecond
 
-window.addEventListener("mousedown", (event) => {
-  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-  raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObject(ballMesh, true);
-
-  if (intersects.length > 0) {
-    isDragging = true;
-    dragStartY = event.clientY;
-    shotPower = 0;
+// Shoot ball by holding and releasing 'E' key
+window.addEventListener("keydown", (event) => {
+  if (event.key === 'e' || event.key === 'E') {
+    if (!isCharging) {
+      isCharging = true;
+      chargeStartTime = Date.now();
+      shotPower = 0;
+    }
   }
 });
 
-window.addEventListener("mousemove", (event) => {
-  if (!isDragging) return;
+window.addEventListener("keyup", (event) => {
+  if (event.key === 'e' || event.key === 'E') {
+    if (isCharging) {
+      isCharging = false;
 
-  const dragAmount = (event.clientY - dragStartY);
+      const shootDir = new THREE.Vector3();
+      camera.getWorldDirection(shootDir);
+      shootDir.normalize();
 
-  shotPower = Math.max(0, dragAmount * 0.02);
-});
-
-window.addEventListener("mouseup", () => {
-  if (isDragging) {
-    isDragging = false;
-
-    const shootDir = new THREE.Vector3();
-    camera.getWorldDirection(shootDir);
-    shootDir.normalize();
-
-    ballVelocity.copy(shootDir).multiplyScalar(shotPower);
+      ballVelocity.copy(shootDir).multiplyScalar(shotPower);
+      shotPower = 0;
+    }
   }
 });
 
@@ -132,6 +169,17 @@ function updateBallPhysics(delta) {
 
   const ballRadius = 0.3;
   const ballSphere = new THREE.Sphere(ballMesh.position, ballRadius);
+
+  // Clamp ball position to map boundaries (100x100 ground)
+  const mapBoundary = 50;
+  if (ballMesh.position.x > mapBoundary || ballMesh.position.x < -mapBoundary) {
+    ballMesh.position.x = Math.max(-mapBoundary, Math.min(mapBoundary, ballMesh.position.x));
+    ballVelocity.x *= -0.9; // Bounce back
+  }
+  if (ballMesh.position.z > mapBoundary || ballMesh.position.z < -mapBoundary) {
+    ballMesh.position.z = Math.max(-mapBoundary, Math.min(mapBoundary, ballMesh.position.z));
+    ballVelocity.z *= -0.9; // Bounce back
+  }
 
   for (let i = 0; i < wallBoxes.length; i++) {
     const wall = wallBoxes[i];
@@ -162,6 +210,19 @@ function animate() {
   
   const delta = Math.min(clock.getDelta(), 0.05);
 
+  // Update shot power while charging
+  if (isCharging) {
+    const chargeTime = Date.now() - chargeStartTime;
+    shotPower = Math.min(chargeTime * chargeRate, maxPower);
+    
+    // Show and update power bar
+    powerBarContainer.style.display = 'block';
+    const powerPercent = (shotPower / maxPower) * 100;
+    powerBarFill.style.width = powerPercent + '%';
+  } else {
+    // Hide power bar when not charging
+    powerBarContainer.style.display = 'none';
+  }
 
   mixers.forEach(mixer => mixer.update(delta));
 

@@ -49,30 +49,26 @@ const velocity = new THREE.Vector3();
     }
   });
 
-  // --- Mouse rotation ---
-  let isDragging = false;
-  let previousMousePosition = { x: 0, y: 0 };
-  const rotationSpeed = 0.005;
+  // --- Mouse rotation with pointer lock ---
+  const rotationSpeed = 0.002;
 
-  renderer.domElement.addEventListener('mousedown', e => {
-    isDragging = true;
-    previousMousePosition.x = e.clientX;
-    previousMousePosition.y = e.clientY;
+  // Request pointer lock on click
+  renderer.domElement.addEventListener('click', () => {
+    if (!isBirdsEyeView) {
+      renderer.domElement.requestPointerLock();
+    }
   });
 
-  document.addEventListener('mouseup', () => (isDragging = false));
-
+  // Handle mouse movement when pointer is locked
   document.addEventListener('mousemove', e => {
-    if (!isDragging || isBirdsEyeView) return;
+    if (document.pointerLockElement !== renderer.domElement || isBirdsEyeView) return;
 
-    const deltaX = e.clientX - previousMousePosition.x;
-    const deltaY = e.clientY - previousMousePosition.y;
-    previousMousePosition.x = e.clientX;
-    previousMousePosition.y = e.clientY;
+    const deltaX = e.movementX || 0;
+    const deltaY = e.movementY || 0;
 
     camera.rotation.order = 'YXZ'; // yaw (y), pitch (x)
-    camera.rotation.y += deltaX * rotationSpeed; // yaw
-    camera.rotation.x += deltaY * rotationSpeed; // pitch
+    camera.rotation.y -= deltaX * rotationSpeed; // yaw
+    camera.rotation.x -= deltaY * rotationSpeed; // pitch
     camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
   });
 
@@ -103,6 +99,14 @@ const velocity = new THREE.Vector3();
     velocity.lerp(move, 0.1);
 
     camera.position.addScaledVector(velocity, deltaTime * 60);
+    
+    // Clamp camera position to map boundaries (100x100 ground)
+    const mapBoundary = 50; // Ground is 100x100, so ±50 from center
+    camera.position.x = Math.max(-mapBoundary, Math.min(mapBoundary, camera.position.x));
+    camera.position.z = Math.max(-mapBoundary, Math.min(mapBoundary, camera.position.z));
+    
+    // Prevent camera from going below ground
+    camera.position.y = Math.max(0.5, camera.position.y);
   }
 
   return { update };
