@@ -86,10 +86,10 @@ const velocity = new THREE.Vector3();
 
     const move = new THREE.Vector3();
 
-    if (keys['ArrowUp']) move.add(direction);
-    if (keys['ArrowDown']) move.sub(direction);
-    if (keys['ArrowLeft']) move.sub(right);
-    if (keys['ArrowRight']) move.add(right);
+    if (keys['ArrowUp'] || keys['KeyW']) move.add(direction);
+    if (keys['ArrowDown'] || keys['KeyS']) move.sub(direction);
+    if (keys['ArrowLeft'] || keys['KeyA']) move.sub(right);
+    if (keys['ArrowRight'] || keys['KeyD']) move.add(right);
     if (keys['Space']) move.y += 1;
     if (keys['ShiftLeft'] || keys['ShiftRight']) move.y -= 1;
 
