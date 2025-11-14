@@ -22,6 +22,33 @@ const velocity = new THREE.Vector3();
   const direction = new THREE.Vector3();
   const right = new THREE.Vector3();
 
+  // --- Bird's Eye View Toggle ---
+  let isBirdsEyeView = false;
+  let savedPosition = new THREE.Vector3();
+  let savedRotation = new THREE.Euler();
+  
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '7') {
+      isBirdsEyeView = !isBirdsEyeView;
+      
+      if (isBirdsEyeView) {
+        // Save current camera state
+        savedPosition.copy(camera.position);
+        savedRotation.copy(camera.rotation);
+        
+        // Switch to bird's eye view
+        camera.position.set(0, 80, 0);
+        camera.rotation.set(-Math.PI / 2, 0, 0);
+        camera.rotation.order = 'YXZ';
+      } else {
+        // Restore previous camera state
+        camera.position.copy(savedPosition);
+        camera.rotation.copy(savedRotation);
+        camera.rotation.order = 'YXZ';
+      }
+    }
+  });
+
   // --- Mouse rotation ---
   let isDragging = false;
   let previousMousePosition = { x: 0, y: 0 };
@@ -36,7 +63,7 @@ const velocity = new THREE.Vector3();
   document.addEventListener('mouseup', () => (isDragging = false));
 
   document.addEventListener('mousemove', e => {
-    if (!isDragging) return;
+    if (!isDragging || isBirdsEyeView) return;
 
     const deltaX = e.clientX - previousMousePosition.x;
     const deltaY = e.clientY - previousMousePosition.y;
@@ -51,6 +78,9 @@ const velocity = new THREE.Vector3();
 
   // --- Update per frame ---
   function update(deltaTime) {
+    // Skip movement updates when in bird's eye view
+    if (isBirdsEyeView) return;
+    
     direction.set(0, 0, -1).applyQuaternion(camera.quaternion);
     direction.y = 0;             // flatten movement horizontally
     direction.normalize();
