@@ -29,6 +29,18 @@ scene.add(ground);
 const walls = createWall();
 walls.forEach(wall => scene.add(wall));
 
+const wallBoxes = [];
+walls.forEach(wall => {
+    wall.geometry.computeBoundingBox();
+    const box = new THREE.Box3().setFromObject(wall);
+    wallBoxes.push(box);
+});
+
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let ballMesh = null;
+
 let mixers = [];
 
 createFlag('/models/golf_flag.glb', {
@@ -39,24 +51,101 @@ createFlag('/models/golf_flag.glb', {
   if (mixer) mixers.push(mixer);
 });
 
-createPutter('/models/putter1.glb', {
-  position: new THREE.Vector3(-4, 1, 10),
-  scale: new THREE.Vector3(2, 2, 2),
+createBall('/models/golfball.glb', {
+  position: new THREE.Vector3(3, 1, 10),
+  scale: new THREE.Vector3(.3, .3, .3),
 }).then(({ model }) => {
+  ballMesh = model;
   scene.add(model);
 });
 
-createBall('/models/golfball.glb', {
-  position: new THREE.Vector3(-5, 1, 10),
-  scale: new THREE.Vector3(1, 1, 1),
-}).then(({ model }) => {
-  scene.add(model);
+let isDragging = false;
+let dragStartY = 0;
+let shotPower = 0;
+let ballVelocity = new THREE.Vector3(0, 0, 0);
+
+window.addEventListener("mousedown", (event) => {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObject(ballMesh, true);
+
+  if (intersects.length > 0) {
+    isDragging = true;
+    dragStartY = event.clientY;
+    shotPower = 0;
+  }
 });
+
+window.addEventListener("mousemove", (event) => {
+  if (!isDragging) return;
+
+  const dragAmount = (event.clientY - dragStartY);
+
+  shotPower = Math.max(0, dragAmount * 0.02);
+});
+
+window.addEventListener("mouseup", () => {
+  if (isDragging) {
+    isDragging = false;
+
+    const shootDir = new THREE.Vector3();
+    camera.getWorldDirection(shootDir);
+    shootDir.normalize();
+
+    ballVelocity.copy(shootDir).multiplyScalar(shotPower);
+  }
+});
+
+
+
 
 camera.position.set(0, 2, 10); 
 
 
 const clock = new THREE.Clock();
+
+function updateBallPhysics(delta) {
+  if (!ballMesh) return;
+
+  ballMesh.position.add(ballVelocity);
+
+  ballMesh.position.y = 0.3;   
+  ballVelocity.y = 0;       
+
+  ballVelocity.multiplyScalar(0.96);
+
+  if (ballVelocity.length() < 0.001) {
+    ballVelocity.set(0, 0, 0);
+  }
+
+  const ballRadius = 0.3;
+  const ballSphere = new THREE.Sphere(ballMesh.position, ballRadius);
+
+  for (let i = 0; i < wallBoxes.length; i++) {
+    const wall = wallBoxes[i];
+
+    if (wall.intersectsSphere(ballSphere)) {
+
+      const size = new THREE.Vector3();
+      wall.getSize(size);
+
+      const isVertical = size.x < size.z;   
+      const isHorizontal = size.z < size.x;  
+
+      if (isVertical) {
+        ballVelocity.x *= -0.9;
+        ballMesh.position.x += (ballVelocity.x > 0 ? 1 : -1) * 0.05;
+      }
+      if (isHorizontal) {
+        ballVelocity.z *= -0.9;
+        ballMesh.position.z += (ballVelocity.z > 0 ? 1 : -1) * 0.05;
+      }
+    }
+  }
+}
+
 
 function animate() {
   requestAnimationFrame(animate);
@@ -65,6 +154,9 @@ function animate() {
 
 
   mixers.forEach(mixer => mixer.update(delta));
+
+  updateBallPhysics(delta);
+
   
   updateCamera(delta); 
   renderer.render(scene, camera);
