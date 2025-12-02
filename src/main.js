@@ -128,13 +128,53 @@ cubeObstacles.forEach(cube => {
 // Create hole at flag position
 const holePosition = new THREE.Vector3(30, 0, 30);
 const holeRadius = 1.5;
+
+// Create a green ring around the hole to separate it from grass texture
+const ringGeometry = new THREE.RingGeometry(holeRadius, holeRadius + 0.3, 32);
+const ringMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x2d5016,
+  side: THREE.DoubleSide,
+  depthWrite: true,
+  polygonOffset: true,
+  polygonOffsetFactor: -1,
+  polygonOffsetUnits: -1
+});
+const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+ring.rotation.x = -Math.PI / 2;
+ring.position.copy(holePosition);
+ring.position.y = 0.235;
+ring.renderOrder = 1;
+scene.add(ring);
+
+// Create the black hole interior
 const holeGeometry = new THREE.CircleGeometry(holeRadius, 32);
-const holeMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const holeMaterial = new THREE.MeshBasicMaterial({ 
+  color: 0x000000,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  polygonOffset: true,
+  polygonOffsetFactor: -2,
+  polygonOffsetUnits: -2
+});
 const hole = new THREE.Mesh(holeGeometry, holeMaterial);
 hole.rotation.x = -Math.PI / 2;
 hole.position.copy(holePosition);
-hole.position.y = 0.01; // Slightly above ground to prevent z-fighting
+hole.position.y = 0.245;
+hole.renderOrder = 2; // Render on top of ring
 scene.add(hole);
+
+// Create the hole cup/rim for better visibility
+const cupGeometry = new THREE.CylinderGeometry(holeRadius, holeRadius - 0.1, 0.5, 32, 1, true);
+const cupMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x1a1a1a,
+  side: THREE.DoubleSide,
+  metalness: 0.5,
+  roughness: 0.5
+});
+const cup = new THREE.Mesh(cupGeometry, cupMaterial);
+cup.position.copy(holePosition);
+cup.position.y = 0.0; // Position cup to connect with hole
+scene.add(cup);
 
 let ballMesh = null;
 
@@ -162,6 +202,7 @@ let shotPower = 0;
 let ballVelocity = new THREE.Vector3(0, 0, 0);
 const maxPower = 2.0; // Maximum shot power
 const chargeRate = 0.001; // Power increase per millisecond
+let isBallFalling = false; // Track if ball is falling into hole
 
 // Game state
 let currentHits = 0;
@@ -182,6 +223,7 @@ function resetTurn() {
     ballMesh.position.copy(ballStartPosition);
     ballVelocity.set(0, 0, 0);
     currentHits = 0;
+    isBallFalling = false;
     updateScoreUI();
   }
 }
@@ -189,7 +231,7 @@ function resetTurn() {
 // Shoot ball by holding and releasing 'E' key
 window.addEventListener("keydown", (event) => {
   if (event.key === 'e' || event.key === 'E') {
-    if (!isCharging && ballVelocity.length() < 0.001) { // Only allow shooting when ball is stopped
+    if (!isCharging && !isBallFalling && ballVelocity.length() < 0.001) { // Only allow shooting when ball is stopped and not falling
       isCharging = true;
       chargeStartTime = Date.now();
       shotPower = 0;
@@ -232,6 +274,18 @@ const clock = new THREE.Clock();
 function updateBallPhysics(delta) {
   if (!ballMesh) return;
 
+  // If ball is falling into hole, animate it falling
+  if (isBallFalling) {
+    ballMesh.position.y -= delta * 3; // Fall down
+    ballMesh.rotation.x += delta * 10; // Spin while falling
+    
+    // Reset after falling out of view
+    if (ballMesh.position.y < -2) {
+      resetTurn();
+    }
+    return;
+  }
+
   ballMesh.position.add(ballVelocity);
 
   ballMesh.position.y = 0.3;   
@@ -247,19 +301,19 @@ function updateBallPhysics(delta) {
   const ballSphere = new THREE.Sphere(ballMesh.position, ballRadius);
 
   // Check if ball is in the hole
-  const distanceToHole = ballMesh.position.distanceTo(holePosition);
-  if (distanceToHole < holeRadius && ballVelocity.length() < 0.5) { // Ball must be moving slowly to fall in
-    // Ball scored!
+  const distanceToHole = new THREE.Vector2(ballMesh.position.x, ballMesh.position.z)
+    .distanceTo(new THREE.Vector2(holePosition.x, holePosition.z));
+  
+  if (distanceToHole < holeRadius - 0.2 && ballVelocity.length() < 0.5) { // Ball must be moving slowly to fall in
+    // Ball scored! Start falling animation
+    isBallFalling = true;
+    ballVelocity.set(0, 0, 0);
+    
     lastHits = currentHits;
     if (bestHits === null || currentHits < bestHits) {
       bestHits = currentHits;
     }
     updateScoreUI();
-    
-    // Reset after a short delay
-    setTimeout(() => {
-      resetTurn();
-    }, 500);
     return;
   }
 
