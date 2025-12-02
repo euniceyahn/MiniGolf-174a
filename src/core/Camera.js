@@ -52,16 +52,20 @@ const velocity = new THREE.Vector3();
   // --- Mouse rotation with pointer lock ---
   const rotationSpeed = 0.002;
 
-  // Request pointer lock on click
+  // Request pointer lock on click (only in ground mode)
   renderer.domElement.addEventListener('click', () => {
-    if (!isBirdsEyeView) {
+    // Check if we're in ground mode (camera height < 15)
+    const isGroundMode = camera.position.y < 15;
+    if (!isBirdsEyeView && isGroundMode) {
       renderer.domElement.requestPointerLock();
     }
   });
 
   // Handle mouse movement when pointer is locked
   document.addEventListener('mousemove', e => {
-    if (document.pointerLockElement !== renderer.domElement || isBirdsEyeView) return;
+    // Don't rotate camera if not pointer locked, in bird's eye view, or in aerial mode
+    const isAerialMode = camera.position.y > 15;
+    if (document.pointerLockElement !== renderer.domElement || isBirdsEyeView || isAerialMode) return;
 
     const deltaX = e.movementX || 0;
     const deltaY = e.movementY || 0;

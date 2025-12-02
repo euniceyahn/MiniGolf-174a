@@ -57,13 +57,20 @@ export function createWall() {
         });
 
         const material = new THREE.MeshStandardMaterial({
-            map:colorMap,
-            side:THREE.DoubleSide,
+            map: colorMap,
+            normalMap: normalMap,
+            roughnessMap: roughnessMap,
+            aoMap: aoMap,
+            side: THREE.DoubleSide,
+            metalness: 0.1,
+            roughness: 0.8,
         });
 
 
         const wall = new THREE.Mesh(geometry, material);
         wall.position.set(positions[i].x, 0.5, positions[i].z);
+        wall.castShadow = true;
+        wall.receiveShadow = true;
         
 
         geometry.attributes.uv2 = geometry.attributes.uv;

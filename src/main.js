@@ -6,36 +6,105 @@ import {createFlag} from './objects/Flag.js';
 import { createPutter } from './objects/Putter.js';
 import { createBall } from './objects/Ball.js';
 import { createCubeObstacle } from './objects/CubeObstacle.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb); 
 
-const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+// Create beautiful sky gradient
+const skyColor = 0x87ceeb;
+scene.background = new THREE.Color(skyColor);
+scene.fog = new THREE.Fog(skyColor, 80, 250); // Add atmospheric fog
+
+// Add decorative clouds in the background
+function createClouds() {
+  const cloudGroup = new THREE.Group();
+  const cloudGeometry = new THREE.SphereGeometry(8, 16, 16);
+  const cloudMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.4,
+    roughness: 1,
+  });
+  
+  // Create multiple clouds scattered around (positioned high and far)
+  for (let i = 0; i < 12; i++) {
+    const cloud = new THREE.Mesh(cloudGeometry, cloudMaterial);
+    cloud.position.set(
+      Math.random() * 300 - 150,
+      Math.random() * 40 + 80,  // Much higher: 80-120 instead of 40-70
+      Math.random() * 300 - 150
+    );
+    cloud.scale.set(
+      Math.random() * 2 + 1,
+      Math.random() * 0.5 + 0.5,
+      Math.random() * 1.5 + 1
+    );
+    cloudGroup.add(cloud);
+  }
+  
+  return cloudGroup;
+}
+
+const clouds = createClouds();
+scene.add(clouds);
+
+// Better lighting setup
+const ambient = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambient);
-const directional = new THREE.DirectionalLight(0xffffff, 1);
-directional.position.set(100, 200, 100);
+
+// Main sun-like directional light with shadows
+const directional = new THREE.DirectionalLight(0xfff4e6, 1.5);
+directional.position.set(50, 80, 40);
+directional.castShadow = true;
+directional.shadow.mapSize.width = 2048;
+directional.shadow.mapSize.height = 2048;
+directional.shadow.camera.near = 0.5;
+directional.shadow.camera.far = 500;
+directional.shadow.camera.left = -100;
+directional.shadow.camera.right = 100;
+directional.shadow.camera.top = 100;
+directional.shadow.camera.bottom = -100;
+directional.shadow.bias = -0.0001;
 scene.add(directional);
 
+// Add warm fill light
+const fillLight = new THREE.DirectionalLight(0xffa500, 0.3);
+fillLight.position.set(-50, 30, -50);
+scene.add(fillLight);
 
-const renderer = new THREE.WebGLRenderer({antialias: true});
+// Add hemisphere light for better ambient
+const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x4a7c59, 0.5);
+scene.add(hemiLight);
+
+const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
 renderer.setSize( window.innerWidth, window.innerHeight );
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.7;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild( renderer.domElement );
 
-// Create power bar UI
+// Create power bar UI with modern styling
 const powerBarContainer = document.createElement('div');
 powerBarContainer.id = 'power-bar-container';
 powerBarContainer.style.cssText = `
   position: fixed;
-  bottom: 50px;
+  bottom: 60px;
   left: 50%;
-  transform: translateX(-50%);
-  width: 300px;
-  height: 30px;
-  background-color: rgba(0, 0, 0, 0.5);
-  border: 2px solid white;
-  border-radius: 5px;
+  width: 350px;
+  height: 40px;
+  margin-left: -175px;
+  background: linear-gradient(135deg, rgba(20, 20, 40, 0.9), rgba(40, 40, 70, 0.9));
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 25px;
   display: none;
   overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 2px 8px rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
 `;
 
 const powerBarFill = document.createElement('div');
@@ -43,8 +112,9 @@ powerBarFill.id = 'power-bar-fill';
 powerBarFill.style.cssText = `
   width: 0%;
   height: 100%;
-  background: linear-gradient(90deg, #00ff00, #ffff00, #ff0000);
+  background: linear-gradient(90deg, #00ff88, #00ddff, #ffaa00, #ff3366);
   transition: width 0.05s linear;
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
 `;
 
 const powerBarLabel = document.createElement('div');
@@ -54,10 +124,11 @@ powerBarLabel.style.cssText = `
   left: 50%;
   transform: translate(-50%, -50%);
   color: white;
-  font-family: Arial, sans-serif;
-  font-size: 14px;
-  font-weight: bold;
-  text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+  font-family: 'Arial', sans-serif;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.8), 2px 2px 4px rgba(0,0,0,0.9);
   pointer-events: none;
 `;
 powerBarLabel.textContent = 'POWER';
@@ -66,32 +137,107 @@ powerBarContainer.appendChild(powerBarFill);
 powerBarContainer.appendChild(powerBarLabel);
 document.body.appendChild(powerBarContainer);
 
-// Create score UI
+// Create score UI with modern glassmorphism styling
 const scoreContainer = document.createElement('div');
 scoreContainer.style.cssText = `
   position: fixed;
-  top: 20px;
-  right: 20px;
-  background-color: rgba(0, 0, 0, 0.7);
+  top: 30px;
+  right: 30px;
+  background: linear-gradient(135deg, rgba(20, 20, 40, 0.85), rgba(40, 40, 70, 0.85));
   color: white;
-  padding: 15px;
-  font-family: Arial, sans-serif;
+  padding: 25px;
+  font-family: 'Arial', sans-serif;
   font-size: 16px;
-  border-radius: 8px;
-  border: 2px solid white;
-  min-width: 200px;
+  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  min-width: 240px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 2px 8px rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
 `;
 scoreContainer.innerHTML = `
-  <div style="font-size: 18px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid white; padding-bottom: 5px;">SCORE</div>
-  <div>Current Hits: <span id="current-hits">0</span></div>
-  <div>Last Score: <span id="last-hits">-</span></div>
-  <div>Best Score: <span id="best-hits">-</span></div>
-  <div style="margin-top: 10px; font-size: 12px; color: #aaa;">Press P to reset</div>
+  <div style="font-size: 22px; font-weight: 900; margin-bottom: 15px; border-bottom: 2px solid rgba(255, 255, 255, 0.3); padding-bottom: 8px; letter-spacing: 2px; text-shadow: 0 0 10px rgba(0, 255, 255, 0.6);">⛳ SCORE</div>
+  <div style="margin: 8px 0; font-weight: 600; display: flex; justify-content: space-between;">
+    <span style="color: rgba(255, 255, 255, 0.8);">Current Hits:</span> 
+    <span id="current-hits" style="color: #00ff88; font-weight: 900; text-shadow: 0 0 8px rgba(0, 255, 136, 0.6);">0</span>
+  </div>
+  <div style="margin: 8px 0; font-weight: 600; display: flex; justify-content: space-between;">
+    <span style="color: rgba(255, 255, 255, 0.8);">Last Score:</span> 
+    <span id="last-hits" style="color: #ffaa00; font-weight: 900;">-</span>
+  </div>
+  <div style="margin: 8px 0; font-weight: 600; display: flex; justify-content: space-between;">
+    <span style="color: rgba(255, 255, 255, 0.8);">Best Score:</span> 
+    <span id="best-hits" style="color: #ff3366; font-weight: 900; text-shadow: 0 0 8px rgba(255, 51, 102, 0.6);">-</span>
+  </div>
+  <div style="margin-top: 15px; padding-top: 10px; font-size: 12px; color: rgba(255, 255, 255, 0.6); border-top: 1px solid rgba(255, 255, 255, 0.2); text-align: center; letter-spacing: 1px;">Press <span style="color: #00ddff; font-weight: 900;">P</span> to reset</div>
+  <div id="aim-mode" style="margin-top: 8px; padding-top: 8px; font-size: 11px; color: rgba(255, 255, 255, 0.5); border-top: 1px solid rgba(255, 255, 255, 0.1); text-align: center; letter-spacing: 1px;">Ground Mode</div>
 `;
 document.body.appendChild(scoreContainer);
 
+// Create controls panel UI
+const controlsContainer = document.createElement('div');
+controlsContainer.style.cssText = `
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  background: linear-gradient(135deg, rgba(20, 20, 40, 0.85), rgba(40, 40, 70, 0.85));
+  color: white;
+  padding: 12px 15px;
+  font-family: 'Arial', sans-serif;
+  font-size: 11px;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 2px 8px rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+`;
+controlsContainer.innerHTML = `
+  <div style="font-size: 13px; font-weight: 900; margin-bottom: 8px; letter-spacing: 1px; text-shadow: 0 0 10px rgba(0, 255, 255, 0.6);">🎮 CONTROLS</div>
+  <div style="margin: 4px 0; display: flex; align-items: center; gap: 8px;">
+    <span style="background: rgba(0, 255, 136, 0.2); color: #00ff88; padding: 2px 8px; border-radius: 4px; font-weight: 900; min-width: 25px; text-align: center; border: 1px solid rgba(0, 255, 136, 0.4); font-size: 10px;">E</span>
+    <span style="color: rgba(255, 255, 255, 0.8); font-size: 11px;">Shoot</span>
+  </div>
+  <div style="margin: 4px 0; display: flex; align-items: center; gap: 8px;">
+    <span style="background: rgba(0, 221, 255, 0.2); color: #00ddff; padding: 2px 8px; border-radius: 4px; font-weight: 900; min-width: 25px; text-align: center; border: 1px solid rgba(0, 221, 255, 0.4); font-size: 10px;">7</span>
+    <span style="color: rgba(255, 255, 255, 0.8); font-size: 11px;">Bird's Eye</span>
+  </div>
+  <div style="margin: 4px 0; display: flex; align-items: center; gap: 8px;">
+    <span style="background: rgba(255, 170, 0, 0.2); color: #ffaa00; padding: 2px 6px; border-radius: 4px; font-weight: 900; min-width: 25px; text-align: center; border: 1px solid rgba(255, 170, 0, 0.4); font-size: 10px;">WASD</span>
+    <span style="color: rgba(255, 255, 255, 0.8); font-size: 11px;">Move</span>
+  </div>
+  <div style="margin: 4px 0; display: flex; align-items: center; gap: 8px;">
+    <span style="background: rgba(255, 51, 102, 0.2); color: #ff3366; padding: 2px 8px; border-radius: 4px; font-weight: 900; min-width: 25px; text-align: center; border: 1px solid rgba(255, 51, 102, 0.4); font-size: 10px;">P</span>
+    <span style="color: rgba(255, 255, 255, 0.8); font-size: 11px;">Reset</span>
+  </div>
+`;
+document.body.appendChild(controlsContainer);
+
 const camera = createCamera();
 const { update: updateCamera } = setupFlyCamera(camera, renderer);
+
+// Post-processing setup (after camera is created)
+const composer = new EffectComposer(renderer);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+// Add bloom effect for glowy, prettier look (subtle)
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.15,   // strength (reduced from 0.4)
+  0.4,    // radius (reduced from 0.6)
+  0.6     // threshold (increased from 0.3 - only very bright things bloom)
+);
+composer.addPass(bloomPass);
+
+// Output pass for color correction
+const outputPass = new OutputPass();
+composer.addPass(outputPass);
+
+// Handle window resize
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
 
 const ground = createGround();
 scene.add(ground);
@@ -106,14 +252,14 @@ walls.forEach(wall => {
     wallBoxes.push(box);
 });
 
-// Adding individual cube obstacles
-const cube1 = createCubeObstacle({ x: 10, y: 1, z: 20 }, { x: 6, y: 2, z: 6 }); 
+// Adding individual cube obstacles with different colors
+const cube1 = createCubeObstacle({ x: 10, y: 1, z: 20 }, { x: 6, y: 2, z: 6 }, 0xff6b6b); 
 scene.add(cube1);
 
-const cube2 = createCubeObstacle({ x: -10, y: 1, z: 10 }, { x: 8, y: 2, z: 8 }); 
+const cube2 = createCubeObstacle({ x: -10, y: 1, z: 10 }, { x: 8, y: 2, z: 8 }, 0x4ecdc4); 
 scene.add(cube2);
 
-const cube3 = createCubeObstacle({ x: 0, y: 1, z: -20 }, { x: 7, y: 2, z: 7 }); 
+const cube3 = createCubeObstacle({ x: 0, y: 1, z: -20 }, { x: 7, y: 2, z: 7 }, 0xffe66d); 
 scene.add(cube3);
 
 // Store cubes for collision detection
@@ -129,15 +275,19 @@ cubeObstacles.forEach(cube => {
 const holePosition = new THREE.Vector3(30, 0, 30);
 const holeRadius = 1.5;
 
-// Create a green ring around the hole to separate it from grass texture
+// Create a glowing ring around the hole
 const ringGeometry = new THREE.RingGeometry(holeRadius, holeRadius + 0.3, 32);
 const ringMaterial = new THREE.MeshStandardMaterial({ 
-  color: 0x2d5016,
+  color: 0x3a6b1f,
+  emissive: 0x2d5016,
+  emissiveIntensity: 0.3,
   side: THREE.DoubleSide,
   depthWrite: true,
   polygonOffset: true,
   polygonOffsetFactor: -1,
-  polygonOffsetUnits: -1
+  polygonOffsetUnits: -1,
+  metalness: 0.3,
+  roughness: 0.7
 });
 const ring = new THREE.Mesh(ringGeometry, ringMaterial);
 ring.rotation.x = -Math.PI / 2;
@@ -146,7 +296,7 @@ ring.position.y = 0.235;
 ring.renderOrder = 1;
 scene.add(ring);
 
-// Create the black hole interior
+// Create the black hole interior with subtle glow
 const holeGeometry = new THREE.CircleGeometry(holeRadius, 32);
 const holeMaterial = new THREE.MeshBasicMaterial({ 
   color: 0x000000,
@@ -163,6 +313,22 @@ hole.position.y = 0.245;
 hole.renderOrder = 2; // Render on top of ring
 scene.add(hole);
 
+// Add a subtle glow rim around the hole
+const glowRingGeometry = new THREE.RingGeometry(holeRadius - 0.05, holeRadius, 32);
+const glowRingMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffaa00,
+  transparent: true,
+  opacity: 0.4,
+  side: THREE.DoubleSide,
+  depthWrite: false
+});
+const glowRing = new THREE.Mesh(glowRingGeometry, glowRingMaterial);
+glowRing.rotation.x = -Math.PI / 2;
+glowRing.position.copy(holePosition);
+glowRing.position.y = 0.25;
+glowRing.renderOrder = 3;
+scene.add(glowRing);
+
 // Create the hole cup/rim for better visibility
 const cupGeometry = new THREE.CylinderGeometry(holeRadius, holeRadius - 0.1, 0.5, 32, 1, true);
 const cupMaterial = new THREE.MeshStandardMaterial({ 
@@ -177,6 +343,86 @@ cup.position.y = 0.0; // Position cup to connect with hole
 scene.add(cup);
 
 let ballMesh = null;
+
+// Trajectory visualization
+let trajectoryLine = null;
+let trajectoryDots = [];
+function createTrajectoryLine() {
+  const points = [];
+  for (let i = 0; i < 50; i++) {
+    points.push(new THREE.Vector3(0, 0, 0));
+  }
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineDashedMaterial({ 
+    color: 0x00ff88,
+    transparent: true,
+    opacity: 0.7,
+    linewidth: 2,
+    dashSize: 0.5,
+    gapSize: 0.3
+  });
+  trajectoryLine = new THREE.Line(geometry, material);
+  trajectoryLine.computeLineDistances();
+  trajectoryLine.visible = false;
+  scene.add(trajectoryLine);
+  
+  // Create dots along trajectory for better visibility
+  const dotGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+  const dotMaterial = new THREE.MeshBasicMaterial({ 
+    color: 0x00ffaa,
+    transparent: true,
+    opacity: 0.8
+  });
+  
+  for (let i = 0; i < 10; i++) {
+    const dot = new THREE.Mesh(dotGeometry, dotMaterial.clone());
+    dot.visible = false;
+    scene.add(dot);
+    trajectoryDots.push(dot);
+  }
+}
+
+function updateTrajectoryLine(startPos, direction, power) {
+  if (!trajectoryLine) return;
+  
+  const points = [];
+  const velocity = direction.clone().multiplyScalar(power);
+  const friction = 0.96;
+  const timeSteps = 50;
+  
+  let pos = startPos.clone();
+  let vel = velocity.clone();
+  
+  for (let i = 0; i < timeSteps; i++) {
+    points.push(pos.clone());
+    
+    // Simulate physics
+    pos.add(vel);
+    vel.multiplyScalar(friction);
+    
+    // Stop if velocity is too small
+    if (vel.length() < 0.001) break;
+  }
+  
+  trajectoryLine.geometry.setFromPoints(points);
+  trajectoryLine.geometry.attributes.position.needsUpdate = true;
+  trajectoryLine.computeLineDistances();
+  
+  // Update dots positions along trajectory
+  const dotInterval = Math.floor(points.length / trajectoryDots.length);
+  trajectoryDots.forEach((dot, index) => {
+    const pointIndex = index * dotInterval;
+    if (pointIndex < points.length) {
+      dot.position.copy(points[pointIndex]);
+      dot.position.y = 0.3; // Slightly above ground
+      dot.visible = true;
+    } else {
+      dot.visible = false;
+    }
+  });
+}
+
+createTrajectoryLine();
 
 let mixers = [];
 
@@ -203,6 +449,133 @@ let ballVelocity = new THREE.Vector3(0, 0, 0);
 const maxPower = 2.0; // Maximum shot power
 const chargeRate = 0.001; // Power increase per millisecond
 let isBallFalling = false; // Track if ball is falling into hole
+
+// Mouse tracking for aerial aiming
+const mouse = new THREE.Vector2();
+const raycaster = new THREE.Raycaster();
+let mouseGroundPosition = new THREE.Vector3();
+let isAerialMode = false;
+let previousAerialMode = false;
+
+// Track mouse position
+window.addEventListener('mousemove', (event) => {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+});
+
+// Create aim target indicator for aerial mode
+const aimTargetGeometry = new THREE.RingGeometry(0.8, 1.0, 32);
+const aimTargetMaterial = new THREE.MeshBasicMaterial({ 
+  color: 0xff3366,
+  transparent: true,
+  opacity: 0.8,
+  side: THREE.DoubleSide
+});
+const aimTarget = new THREE.Mesh(aimTargetGeometry, aimTargetMaterial);
+aimTarget.rotation.x = -Math.PI / 2;
+aimTarget.visible = false;
+scene.add(aimTarget);
+
+// Inner dot for aim target
+const aimDotGeometry = new THREE.CircleGeometry(0.3, 32);
+const aimDotMaterial = new THREE.MeshBasicMaterial({ 
+  color: 0xff6699,
+  transparent: true,
+  opacity: 0.9,
+  side: THREE.DoubleSide
+});
+const aimDot = new THREE.Mesh(aimDotGeometry, aimDotMaterial);
+aimDot.rotation.x = -Math.PI / 2;
+aimDot.visible = false;
+scene.add(aimDot);
+
+// Calculate shot direction based on mode (aerial or ground)
+function calculateShootDirection() {
+  if (!ballMesh) return new THREE.Vector3(0, 0, -1);
+  
+  // Determine if we're in aerial mode (camera is high up)
+  isAerialMode = camera.position.y > 15;
+  
+  if (isAerialMode) {
+    // AERIAL MODE: Use mouse to aim at ground point
+    const ballPos = ballMesh.position.clone();
+    ballPos.y = 0;
+    
+    const targetPos = mouseGroundPosition.clone();
+    targetPos.y = 0;
+    
+    // Direction from ball to mouse target
+    const shootDir = new THREE.Vector3().subVectors(targetPos, ballPos);
+    
+    // If too close, use a default direction
+    if (shootDir.length() < 0.1) {
+      return new THREE.Vector3(0, 0, -1);
+    }
+    
+    shootDir.normalize();
+    return shootDir;
+    
+  } else {
+    // GROUND MODE: Ball travels from your position through the ball
+    const cameraPos = camera.position.clone();
+    cameraPos.y = 0; // Project to ground level
+    
+    const ballPos = ballMesh.position.clone();
+    ballPos.y = 0;
+    
+    // Direction from camera through ball (straight line)
+    const shootDir = new THREE.Vector3().subVectors(ballPos, cameraPos).normalize();
+    
+    return shootDir;
+  }
+}
+
+// Particle system for visual effects
+const particles = [];
+function createParticles(position, color, count = 20) {
+  const particleGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+  const particleMaterial = new THREE.MeshBasicMaterial({ 
+    color: color,
+    transparent: true,
+    opacity: 1
+  });
+  
+  for (let i = 0; i < count; i++) {
+    const particle = new THREE.Mesh(particleGeometry, particleMaterial.clone());
+    particle.position.copy(position);
+    
+    // Random velocity for particles
+    particle.velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.3,
+      Math.random() * 0.3,
+      (Math.random() - 0.5) * 0.3
+    );
+    particle.life = 1.0;
+    
+    scene.add(particle);
+    particles.push(particle);
+  }
+}
+
+function updateParticles(delta) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const particle = particles[i];
+    
+    particle.position.add(particle.velocity);
+    particle.velocity.y -= 0.01; // gravity
+    particle.life -= delta * 2;
+    
+    particle.material.opacity = particle.life;
+    particle.scale.setScalar(particle.life);
+    
+    if (particle.life <= 0) {
+      scene.remove(particle);
+      particle.geometry.dispose();
+      particle.material.dispose();
+      particles.splice(i, 1);
+    }
+  }
+}
 
 // Game state
 let currentHits = 0;
@@ -249,11 +622,16 @@ window.addEventListener("keyup", (event) => {
     if (isCharging) {
       isCharging = false;
 
-      const shootDir = new THREE.Vector3();
-      camera.getWorldDirection(shootDir);
-      shootDir.normalize();
+      // Calculate direction based on player position and camera angle
+      const shootDir = calculateShootDirection();
 
       ballVelocity.copy(shootDir).multiplyScalar(shotPower);
+      
+      // Create particle effect when ball is hit
+      if (ballMesh && shotPower > 0.1) {
+        createParticles(ballMesh.position.clone(), 0x00ff88, Math.floor(shotPower * 15));
+      }
+      
       shotPower = 0;
       
       // Increment hit counter
@@ -308,6 +686,10 @@ function updateBallPhysics(delta) {
     // Ball scored! Start falling animation
     isBallFalling = true;
     ballVelocity.set(0, 0, 0);
+    
+    // Create celebration particle effect
+    createParticles(ballMesh.position.clone(), 0xffaa00, 30);
+    createParticles(ballMesh.position.clone(), 0xff3366, 20);
     
     lastHits = currentHits;
     if (bestHits === null || currentHits < bestHits) {
@@ -400,10 +782,96 @@ function animate() {
   mixers.forEach(mixer => mixer.update(delta));
 
   updateBallPhysics(delta);
+  updateParticles(delta); // Update particle effects
+  
+  // Animate clouds slowly
+  clouds.rotation.y += delta * 0.02;
 
+  // Update mouse raycasting for aerial mode
+  if (ballMesh && !isBallFalling && ballVelocity.length() < 0.001) {
+    // Cast ray from mouse to ground
+    raycaster.setFromCamera(mouse, camera);
+    
+    // Create a ground plane for intersection
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const intersectPoint = new THREE.Vector3();
+    raycaster.ray.intersectPlane(groundPlane, intersectPoint);
+    
+    if (intersectPoint) {
+      mouseGroundPosition.copy(intersectPoint);
+    }
+    
+    // Determine if in aerial mode
+    isAerialMode = camera.position.y > 15;
+    
+    // Handle pointer lock based on mode changes
+    if (isAerialMode !== previousAerialMode) {
+      if (isAerialMode) {
+        // Switching to aerial mode - exit pointer lock
+        if (document.pointerLockElement === renderer.domElement) {
+          document.exitPointerLock();
+        }
+      } else {
+        // Switching to ground mode - request pointer lock
+        renderer.domElement.requestPointerLock();
+      }
+      previousAerialMode = isAerialMode;
+    }
+    
+    // Show/hide aim target based on mode
+    if (isAerialMode) {
+      aimTarget.visible = true;
+      aimTarget.position.copy(mouseGroundPosition);
+      aimTarget.position.y = 0.3;
+      
+      aimDot.visible = true;
+      aimDot.position.copy(mouseGroundPosition);
+      aimDot.position.y = 0.31;
+      
+      // Animate aim target
+      aimTarget.rotation.z += delta * 2;
+      
+      // Update UI
+      document.body.classList.add('aerial-mode');
+      const aimModeElement = document.getElementById('aim-mode');
+      if (aimModeElement) {
+        aimModeElement.innerHTML = '🖱️ <span style="color: #ff3366;">Aerial Mode</span> - Use Mouse';
+      }
+    } else {
+      aimTarget.visible = false;
+      aimDot.visible = false;
+      document.body.classList.remove('aerial-mode');
+      const aimModeElement = document.getElementById('aim-mode');
+      if (aimModeElement) {
+        aimModeElement.innerHTML = '🚶 <span style="color: #00ff88;">Ground Mode</span> - Use Position';
+      }
+    }
+  } else {
+    aimTarget.visible = false;
+    aimDot.visible = false;
+    // Reset mode tracking when ball is moving
+    previousAerialMode = isAerialMode;
+  }
+
+  // Update trajectory line when ball is stationary
+  if (ballMesh && !isBallFalling && ballVelocity.length() < 0.001) {
+    trajectoryLine.visible = true;
+    
+    // Calculate direction based on mode (aerial mouse or ground position)
+    const shootDir = calculateShootDirection();
+    
+    // Use current power if charging, otherwise show a preview with medium power
+    const previewPower = isCharging ? shotPower : 1.0;
+    updateTrajectoryLine(ballMesh.position, shootDir, previewPower);
+  } else {
+    if (trajectoryLine) {
+      trajectoryLine.visible = false;
+      trajectoryDots.forEach(dot => dot.visible = false);
+    }
+  }
   
   updateCamera(delta); 
-  renderer.render(scene, camera);
+  composer.render(); // Use post-processing composer instead of direct render
 }
 
 requestAnimationFrame(animate);

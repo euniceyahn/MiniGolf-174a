@@ -31,6 +31,7 @@ export function createGround() {
     const ground = new THREE.Mesh(geometry, material);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
+    ground.castShadow = false;
 
     // Set uv2 for AO map
     geometry.attributes.uv2 = geometry.attributes.uv;
