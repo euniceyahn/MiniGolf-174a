@@ -79,6 +79,127 @@ scene.add(fillLight);
 const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x4a7c59, 0.5);
 scene.add(hemiLight);
 
+// Night mode system
+let isNightMode = false;
+
+// Store original lighting values for day mode
+const daySettings = {
+  skyColor: 0x87ceeb,
+  fogColor: 0x87ceeb,
+  ambientIntensity: 0.6,
+  directionalColor: 0xfff4e6,
+  directionalIntensity: 1.5,
+  fillColor: 0xffa500,
+  fillIntensity: 0.3,
+  hemiSkyColor: 0x87ceeb,
+  hemiGroundColor: 0x4a7c59,
+  hemiIntensity: 0.5,
+  exposure: 0.7
+};
+
+const nightSettings = {
+  skyColor: 0x1a1a3a,
+  fogColor: 0x1a1a3a,
+  ambientIntensity: 0.4,
+  directionalColor: 0x6688cc,
+  directionalIntensity: 0.8,
+  fillColor: 0x4466bb,
+  fillIntensity: 0.3,
+  hemiSkyColor: 0x334466,
+  hemiGroundColor: 0x223344,
+  hemiIntensity: 0.4,
+  exposure: 0.8
+};
+
+// Create stars for night mode
+const starsGeometry = new THREE.BufferGeometry();
+const starPositions = [];
+for (let i = 0; i < 500; i++) {
+  const x = (Math.random() - 0.5) * 400;
+  const y = Math.random() * 100 + 50;
+  const z = (Math.random() - 0.5) * 400;
+  starPositions.push(x, y, z);
+}
+starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+const starsMaterial = new THREE.PointsMaterial({
+  color: 0xffffff,
+  size: 0.5,
+  transparent: true,
+  opacity: 0
+});
+const stars = new THREE.Points(starsGeometry, starsMaterial);
+scene.add(stars);
+
+// Create moon for night mode
+const moonGeometry = new THREE.SphereGeometry(5, 32, 32);
+const moonMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffffcc,
+  transparent: true,
+  opacity: 0
+});
+const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+moon.position.set(80, 60, -80);
+scene.add(moon);
+
+// Night mode UI indicator
+const nightModeUI = document.createElement('div');
+nightModeUI.id = 'night-mode-ui';
+nightModeUI.style.cssText = `
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, rgba(10, 10, 30, 0.9), rgba(30, 30, 60, 0.9));
+  color: #aaccff;
+  padding: 8px 20px;
+  font-family: 'Arial', sans-serif;
+  font-size: 14px;
+  font-weight: 900;
+  border-radius: 20px;
+  border: 2px solid rgba(100, 150, 255, 0.4);
+  box-shadow: 0 4px 20px rgba(0, 50, 150, 0.4);
+  backdrop-filter: blur(10px);
+  letter-spacing: 1px;
+  display: none;
+  z-index: 100;
+`;
+nightModeUI.textContent = '🌙 NIGHT MODE';
+document.body.appendChild(nightModeUI);
+
+function setNightMode(enabled) {
+  isNightMode = enabled;
+  const settings = enabled ? nightSettings : daySettings;
+  
+  // Update sky and fog
+  scene.background = new THREE.Color(settings.skyColor);
+  scene.fog.color = new THREE.Color(settings.fogColor);
+  
+  // Update lighting
+  ambient.intensity = settings.ambientIntensity;
+  directional.color.setHex(settings.directionalColor);
+  directional.intensity = settings.directionalIntensity;
+  fillLight.color.setHex(settings.fillColor);
+  fillLight.intensity = settings.fillIntensity;
+  hemiLight.color.setHex(settings.hemiSkyColor);
+  hemiLight.groundColor.setHex(settings.hemiGroundColor);
+  hemiLight.intensity = settings.hemiIntensity;
+  
+  // Update renderer exposure
+  renderer.toneMappingExposure = settings.exposure;
+  
+  // Show/hide stars and moon
+  starsMaterial.opacity = enabled ? 0.8 : 0;
+  moonMaterial.opacity = enabled ? 1 : 0;
+  
+  // Update clouds opacity for night
+  clouds.children.forEach(cloud => {
+    cloud.material.opacity = enabled ? 0.15 : 0.4;
+  });
+  
+  // Show/hide night mode UI
+  nightModeUI.style.display = enabled ? 'block' : 'none';
+}
+
 const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
 renderer.setSize( window.innerWidth, window.innerHeight );
 renderer.shadowMap.enabled = true;
@@ -213,6 +334,68 @@ document.body.appendChild(controlsContainer);
 const camera = createCamera();
 const { update: updateCamera } = setupFlyCamera(camera, renderer);
 
+// Ball cam - follows the ball from behind while it's moving
+const ballCamera = new THREE.PerspectiveCamera(75, 16/9, 0.1, 1000);
+let ballCamActive = false;
+
+// Create ball cam UI container
+const ballCamContainer = document.createElement('div');
+ballCamContainer.id = 'ball-cam-container';
+ballCamContainer.style.cssText = `
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 280px;
+  height: 160px;
+  border: 3px solid rgba(255, 255, 255, 0.4);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 0, 0, 0.3);
+  display: none;
+  z-index: 100;
+`;
+
+const ballCamLabel = document.createElement('div');
+ballCamLabel.style.cssText = `
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  background: rgba(255, 51, 102, 0.8);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  z-index: 101;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+`;
+ballCamLabel.textContent = '🎥 BALL CAM';
+
+const ballCamCanvas = document.createElement('canvas');
+ballCamCanvas.width = 280;
+ballCamCanvas.height = 160;
+ballCamCanvas.style.cssText = `
+  width: 100%;
+  height: 100%;
+  display: block;
+`;
+
+ballCamContainer.appendChild(ballCamCanvas);
+ballCamContainer.appendChild(ballCamLabel);
+document.body.appendChild(ballCamContainer);
+
+// Create a separate renderer for ball cam
+const ballCamRenderer = new THREE.WebGLRenderer({ 
+  canvas: ballCamCanvas, 
+  antialias: true,
+  alpha: true
+});
+ballCamRenderer.setSize(280, 160);
+ballCamRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+ballCamRenderer.toneMappingExposure = 0.7;
+
 // Post-processing setup (after camera is created)
 const composer = new EffectComposer(renderer);
 const renderPass = new RenderPass(scene, camera);
@@ -252,27 +435,163 @@ walls.forEach(wall => {
     wallBoxes.push(box);
 });
 
-// Adding individual cube obstacles with different colors
-const cube1 = createCubeObstacle({ x: 10, y: 1, z: 20 }, { x: 6, y: 2, z: 6 }, 0xff6b6b); 
-scene.add(cube1);
+// Course system - 3 different courses
+// Play area bounds: Upper section (x: -44 to 44, z: 15 to 44), Lower section (x: -44 to 14, z: -44 to 15)
+const courses = [
+  {
+    name: "Course 1",
+    ballStart: { x: 3, y: 1, z: 10 },
+    holePosition: { x: 30, y: 0, z: 30 },
+    flagPosition: { x: 30, y: 8, z: 30 },
+    obstacles: [
+      { pos: { x: 10, y: 1, z: 20 }, size: { x: 6, y: 2, z: 6 }, color: 0xff6b6b },
+      { pos: { x: -10, y: 1, z: 10 }, size: { x: 8, y: 2, z: 8 }, color: 0x4ecdc4 },
+      { pos: { x: 0, y: 1, z: -20 }, size: { x: 7, y: 2, z: 7 }, color: 0xffe66d }
+    ]
+  },
+  {
+    name: "Course 2",
+    ballStart: { x: -30, y: 1, z: 35 },
+    holePosition: { x: -30, y: 0, z: -35 },
+    flagPosition: { x: -30, y: 8, z: -35 },
+    obstacles: [
+      { pos: { x: -20, y: 1, z: 20 }, size: { x: 10, y: 2, z: 4 }, color: 0x9b59b6 },
+      { pos: { x: -35, y: 1, z: 5 }, size: { x: 4, y: 2, z: 15 }, color: 0xe74c3c },
+      { pos: { x: -15, y: 1, z: -10 }, size: { x: 8, y: 2, z: 8 }, color: 0x3498db },
+      { pos: { x: -30, y: 1, z: -20 }, size: { x: 12, y: 2, z: 4 }, color: 0x2ecc71 }
+    ]
+  },
+  {
+    name: "Course 3",
+    ballStart: { x: -35, y: 1, z: -35 },
+    holePosition: { x: 35, y: 0, z: 35 },
+    flagPosition: { x: 35, y: 8, z: 35 },
+    obstacles: [
+      { pos: { x: -20, y: 1, z: 25 }, size: { x: 5, y: 2, z: 5 }, color: 0xf39c12 },
+      { pos: { x: 20, y: 1, z: 25 }, size: { x: 5, y: 2, z: 5 }, color: 0xf39c12 },
+      { pos: { x: -25, y: 1, z: 0 }, size: { x: 6, y: 2, z: 6 }, color: 0x1abc9c },
+      { pos: { x: 0, y: 1, z: 5 }, size: { x: 10, y: 2, z: 4 }, color: 0x1abc9c },
+      { pos: { x: 0, y: 1, z: -15 }, size: { x: 8, y: 2, z: 4 }, color: 0xe91e63 },
+      { pos: { x: -10, y: 1, z: -30 }, size: { x: 5, y: 2, z: 5 }, color: 0x00bcd4 }
+    ]
+  }
+];
 
-const cube2 = createCubeObstacle({ x: -10, y: 1, z: 10 }, { x: 8, y: 2, z: 8 }, 0x4ecdc4); 
-scene.add(cube2);
+let currentCourseIndex = 0;
+let cubeObstacles = [];
+let cubeBoxes = [];
+let currentFlagModel = null;
 
-const cube3 = createCubeObstacle({ x: 0, y: 1, z: -20 }, { x: 7, y: 2, z: 7 }, 0xffe66d); 
-scene.add(cube3);
+// Course name UI
+const courseNameUI = document.createElement('div');
+courseNameUI.style.cssText = `
+  position: fixed;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, rgba(20, 20, 40, 0.9), rgba(40, 40, 70, 0.9));
+  color: white;
+  padding: 12px 30px;
+  font-family: 'Arial', sans-serif;
+  font-size: 20px;
+  font-weight: 900;
+  border-radius: 25px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.6);
+  z-index: 100;
+`;
+courseNameUI.textContent = '⛳ COURSE 1';
+document.body.appendChild(courseNameUI);
 
-// Store cubes for collision detection
-const cubeObstacles = [cube1, cube2, cube3];
-const cubeBoxes = [];
-cubeObstacles.forEach(cube => {
+// Dynamic hole position
+let holePosition = new THREE.Vector3(30, 0, 30);
+
+// Function to clear current course obstacles
+function clearCourseObstacles() {
+  cubeObstacles.forEach(cube => {
+    scene.remove(cube);
+    cube.geometry.dispose();
+    cube.material.dispose();
+  });
+  cubeObstacles = [];
+  cubeBoxes = [];
+}
+
+// Function to load a course
+function loadCourse(courseIndex) {
+  const course = courses[courseIndex];
+  currentCourseIndex = courseIndex;
+  
+  // Clear existing obstacles
+  clearCourseObstacles();
+  
+  // Create new obstacles
+  course.obstacles.forEach(obs => {
+    const cube = createCubeObstacle(obs.pos, obs.size, obs.color);
+    scene.add(cube);
+    cubeObstacles.push(cube);
     cube.geometry.computeBoundingBox();
     const box = new THREE.Box3().setFromObject(cube);
     cubeBoxes.push(box);
-});
+  });
+  
+  // Update hole position
+  holePosition.set(course.holePosition.x, course.holePosition.y, course.holePosition.z);
+  
+  // Update hole visual elements
+  if (hole) {
+    hole.position.set(course.holePosition.x, 0.245, course.holePosition.z);
+  }
+  if (ring) {
+    ring.position.set(course.holePosition.x, 0.235, course.holePosition.z);
+  }
+  if (glowRing) {
+    glowRing.position.set(course.holePosition.x, 0.25, course.holePosition.z);
+  }
+  if (cup) {
+    cup.position.set(course.holePosition.x, 0.0, course.holePosition.z);
+  }
+  
+  // Update flag position
+  if (currentFlagModel) {
+    currentFlagModel.position.set(course.flagPosition.x, course.flagPosition.y, course.flagPosition.z);
+  }
+  
+  // Update course name UI
+  courseNameUI.textContent = `⛳ ${course.name.toUpperCase()}`;
+  
+  console.log(`Loaded ${course.name}`);
+}
 
-// Create hole at flag position
-const holePosition = new THREE.Vector3(30, 0, 30);
+// Function to switch to next course
+function nextCourse() {
+  const nextIndex = (currentCourseIndex + 1) % courses.length;
+  loadCourse(nextIndex);
+  
+  // 50% chance of night mode when switching courses
+  const shouldBeNight = Math.random() < 0.5;
+  setNightMode(shouldBeNight);
+}
+
+// Get current course ball start position
+function getCurrentBallStart() {
+  const course = courses[currentCourseIndex];
+  return new THREE.Vector3(course.ballStart.x, course.ballStart.y, course.ballStart.z);
+}
+
+// Initialize first course obstacles
+const initialCourse = courses[0];
+initialCourse.obstacles.forEach(obs => {
+  const cube = createCubeObstacle(obs.pos, obs.size, obs.color);
+  scene.add(cube);
+  cubeObstacles.push(cube);
+  cube.geometry.computeBoundingBox();
+  const box = new THREE.Box3().setFromObject(cube);
+  cubeBoxes.push(box);
+});
 const holeRadius = 1.5;
 
 // Create a glowing ring around the hole
@@ -289,7 +608,7 @@ const ringMaterial = new THREE.MeshStandardMaterial({
   metalness: 0.3,
   roughness: 0.7
 });
-const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+let ring = new THREE.Mesh(ringGeometry, ringMaterial);
 ring.rotation.x = -Math.PI / 2;
 ring.position.copy(holePosition);
 ring.position.y = 0.235;
@@ -306,7 +625,7 @@ const holeMaterial = new THREE.MeshBasicMaterial({
   polygonOffsetFactor: -2,
   polygonOffsetUnits: -2
 });
-const hole = new THREE.Mesh(holeGeometry, holeMaterial);
+let hole = new THREE.Mesh(holeGeometry, holeMaterial);
 hole.rotation.x = -Math.PI / 2;
 hole.position.copy(holePosition);
 hole.position.y = 0.245;
@@ -322,7 +641,7 @@ const glowRingMaterial = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
   depthWrite: false
 });
-const glowRing = new THREE.Mesh(glowRingGeometry, glowRingMaterial);
+let glowRing = new THREE.Mesh(glowRingGeometry, glowRingMaterial);
 glowRing.rotation.x = -Math.PI / 2;
 glowRing.position.copy(holePosition);
 glowRing.position.y = 0.25;
@@ -337,7 +656,7 @@ const cupMaterial = new THREE.MeshStandardMaterial({
   metalness: 0.5,
   roughness: 0.5
 });
-const cup = new THREE.Mesh(cupGeometry, cupMaterial);
+let cup = new THREE.Mesh(cupGeometry, cupMaterial);
 cup.position.copy(holePosition);
 cup.position.y = 0.0; // Position cup to connect with hole
 scene.add(cup);
@@ -430,6 +749,7 @@ createFlag('/models/golf_flag.glb', {
   position: new THREE.Vector3(30,8,30),
   scale: new THREE.Vector3(5,5,5),
 }).then(({model, mixer}) => {
+  currentFlagModel = model;
   scene.add(model)
   if (mixer) mixers.push(mixer);
 });
@@ -581,7 +901,7 @@ function updateParticles(delta) {
 let currentHits = 0;
 let lastHits = null;
 let bestHits = null;
-const ballStartPosition = new THREE.Vector3(3, 1, 10);
+let ballStartPosition = new THREE.Vector3(3, 1, 10);
 
 // Update UI helper
 function updateScoreUI() {
@@ -591,13 +911,45 @@ function updateScoreUI() {
 }
 
 // Reset turn
-function resetTurn() {
+function resetTurn(switchCourse = true) {
   if (ballMesh) {
+    // Switch to next course if requested
+    if (switchCourse) {
+      nextCourse();
+      ballStartPosition = getCurrentBallStart();
+    }
+    
     ballMesh.position.copy(ballStartPosition);
     ballVelocity.set(0, 0, 0);
     currentHits = 0;
     isBallFalling = false;
     updateScoreUI();
+    
+    // Reset camera position if not in aerial/bird's eye view
+    const isAerial = camera.position.y > 15;
+    if (!isAerial) {
+      // Get direction from ball to hole
+      const ballPos = ballStartPosition.clone();
+      const holePos = holePosition.clone();
+      
+      // Direction from hole to ball (camera should be behind ball, opposite to hole)
+      const dirToHole = new THREE.Vector3().subVectors(holePos, ballPos);
+      dirToHole.y = 0;
+      dirToHole.normalize();
+      
+      // Position camera behind the ball (opposite direction from hole)
+      const cameraDistance = 8; // Distance from ball
+      const cameraHeight = 2.5; // Height above ground
+      
+      camera.position.set(
+        ballPos.x - dirToHole.x * cameraDistance,
+        cameraHeight,
+        ballPos.z - dirToHole.z * cameraDistance
+      );
+      
+      // Make camera look at the ball
+      camera.lookAt(ballPos.x, 0.3, ballPos.z);
+    }
   }
 }
 
@@ -870,7 +1222,37 @@ function animate() {
     }
   }
   
-  updateCamera(delta); 
+  updateCamera(delta);
+  
+  // Update ball camera and render ball cam view
+  if (ballMesh && ballVelocity.length() > 0.01 && !isBallFalling) {
+    ballCamActive = true;
+    ballCamContainer.style.display = 'block';
+    
+    // Position ball camera behind the ball, looking in direction of movement
+    const ballPos = ballMesh.position.clone();
+    const velDir = ballVelocity.clone().normalize();
+    
+    // Camera follows behind the ball
+    const cameraOffset = velDir.clone().multiplyScalar(-3); // 3 units behind
+    cameraOffset.y = 1.5; // Slightly above
+    
+    ballCamera.position.copy(ballPos).add(cameraOffset);
+    
+    // Look slightly ahead of the ball
+    const lookTarget = ballPos.clone().add(velDir.clone().multiplyScalar(5));
+    lookTarget.y = 0.3;
+    ballCamera.lookAt(lookTarget);
+    
+    // Render ball cam view
+    ballCamRenderer.render(scene, ballCamera);
+  } else {
+    if (ballCamActive) {
+      ballCamActive = false;
+      ballCamContainer.style.display = 'none';
+    }
+  }
+  
   composer.render(); // Use post-processing composer instead of direct render
 }
 
