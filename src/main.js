@@ -930,14 +930,10 @@ function calculateShootDirection() {
     
   } else {
     // GROUND MODE: Ball travels from your position through the ball
-    const cameraPos = camera.position.clone();
-    cameraPos.y = 0; // Project to ground level
-    
-    const ballPos = ballMesh.position.clone();
-    ballPos.y = 0;
-    
-    // Direction from camera through ball (straight line)
-    const shootDir = new THREE.Vector3().subVectors(ballPos, cameraPos).normalize();
+    const shootDir = new THREE.Vector3(0, 0, -1);
+    shootDir.applyQuaternion(camera.quaternion);
+    shootDir.y = 0; // Keep it flat on ground
+    shootDir.normalize();
     
     return shootDir;
   }
