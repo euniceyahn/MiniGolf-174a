@@ -7,6 +7,52 @@ import { createPutter } from './objects/Putter.js';
 import { createBall } from './objects/Ball.js';
 import { createCubeObstacle } from './objects/CubeObstacle.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+
+// Create ramp function - flat box that's rotated to create a slope
+function createRamp(position, size, rotation, color) {
+  // Create a flat box and rotate it to create an incline
+  const geometry = new THREE.BoxGeometry(size.length, 0.5, size.width);
+  
+  const material = new THREE.MeshStandardMaterial({
+    color: color,
+    metalness: 0.3,
+    roughness: 0.6,
+    emissive: color,
+    emissiveIntensity: 0.1,
+  });
+  
+  const ramp = new THREE.Mesh(geometry, material);
+  
+  // Calculate tilt angle
+  const tiltAngle = Math.atan2(size.height, size.length);
+  
+  // Create a group to handle compound rotations properly
+  const rampGroup = new THREE.Group();
+  rampGroup.position.set(position.x, position.y, position.z);
+  rampGroup.rotation.y = rotation || 0;
+  
+  // Position the ramp mesh within the group
+  // Offset so the low end is at ground level
+  ramp.position.set(0, size.height / 2 + 0.25, 0);
+  ramp.rotation.x = -tiltAngle;
+  
+  ramp.castShadow = true;
+  ramp.receiveShadow = true;
+  
+  // Mark as ramp for raycasting
+  ramp.userData.isRamp = true;
+  
+  rampGroup.add(ramp);
+  
+  // Store data on the group
+  rampGroup.userData.isRampGroup = true;
+  rampGroup.userData.rampMesh = ramp;
+  
+  return rampGroup;
+}
+
+// Raycaster for ground/ramp detection
+const groundRaycaster = new THREE.Raycaster();
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
@@ -447,6 +493,10 @@ const courses = [
       { pos: { x: 10, y: 1, z: 20 }, size: { x: 6, y: 2, z: 6 }, color: 0xff6b6b },
       { pos: { x: -10, y: 1, z: 10 }, size: { x: 8, y: 2, z: 8 }, color: 0x4ecdc4 },
       { pos: { x: 0, y: 1, z: -20 }, size: { x: 7, y: 2, z: 7 }, color: 0xffe66d }
+    ],
+    ramps: [
+      // Ramp at (20, 20) angled toward hole at (30, 30) - within upper-right section (x:15-44, z:15-44)
+      { pos: { x: 20, y: 0, z: 20 }, size: { length: 6, width: 6, height: 2.5 }, rotation: Math.PI / 4, color: 0x8e44ad }
     ]
   },
   {
@@ -459,6 +509,10 @@ const courses = [
       { pos: { x: -35, y: 1, z: 5 }, size: { x: 4, y: 2, z: 15 }, color: 0xe74c3c },
       { pos: { x: -15, y: 1, z: -10 }, size: { x: 8, y: 2, z: 8 }, color: 0x3498db },
       { pos: { x: -30, y: 1, z: -20 }, size: { x: 12, y: 2, z: 4 }, color: 0x2ecc71 }
+    ],
+    ramps: [
+      // Ramp at (-25, 10) facing toward hole at (-30, -35) - facing -Z direction
+      { pos: { x: -25, y: 0, z: 10 }, size: { length: 6, width: 8, height: 2.5 }, rotation: Math.PI, color: 0x16a085 }
     ]
   },
   {
@@ -473,6 +527,10 @@ const courses = [
       { pos: { x: 0, y: 1, z: 5 }, size: { x: 10, y: 2, z: 4 }, color: 0x1abc9c },
       { pos: { x: 0, y: 1, z: -15 }, size: { x: 8, y: 2, z: 4 }, color: 0xe91e63 },
       { pos: { x: -10, y: 1, z: -30 }, size: { x: 5, y: 2, z: 5 }, color: 0x00bcd4 }
+    ],
+    ramps: [
+      // Ramp at (-30, -10) facing toward hole at (35, 35) - angled NE (toward +X, +Z)
+      { pos: { x: -30, y: 0, z: -10 }, size: { length: 6, width: 8, height: 2.5 }, rotation: Math.PI / 4, color: 0xd35400 }
     ]
   }
 ];
@@ -480,6 +538,7 @@ const courses = [
 let currentCourseIndex = 0;
 let cubeObstacles = [];
 let cubeBoxes = [];
+let rampObstacles = [];
 let currentFlagModel = null;
 
 // Course name UI
@@ -513,11 +572,27 @@ let holePosition = new THREE.Vector3(30, 0, 30);
 function clearCourseObstacles() {
   cubeObstacles.forEach(cube => {
     scene.remove(cube);
-    cube.geometry.dispose();
-    cube.material.dispose();
+    if (cube.geometry) cube.geometry.dispose();
+    if (cube.material) cube.material.dispose();
   });
   cubeObstacles = [];
   cubeBoxes = [];
+  
+  // Clear ramps (they are now Groups containing meshes)
+  rampObstacles.forEach(ramp => {
+    scene.remove(ramp);
+    // If it's a group, dispose children
+    if (ramp.children) {
+      ramp.children.forEach(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+      });
+    }
+    // If it's a mesh directly
+    if (ramp.geometry) ramp.geometry.dispose();
+    if (ramp.material) ramp.material.dispose();
+  });
+  rampObstacles = [];
 }
 
 // Function to load a course
@@ -563,6 +638,15 @@ function loadCourse(courseIndex) {
   // Update course name UI
   courseNameUI.textContent = `⛳ ${course.name.toUpperCase()}`;
   
+  // Create ramps
+  if (course.ramps) {
+    course.ramps.forEach(rampData => {
+      const ramp = createRamp(rampData.pos, rampData.size, rampData.rotation, rampData.color);
+      scene.add(ramp);
+      rampObstacles.push(ramp);
+    });
+  }
+  
   console.log(`Loaded ${course.name}`);
 }
 
@@ -592,6 +676,15 @@ initialCourse.obstacles.forEach(obs => {
   const box = new THREE.Box3().setFromObject(cube);
   cubeBoxes.push(box);
 });
+
+// Initialize first course ramps
+if (initialCourse.ramps) {
+  initialCourse.ramps.forEach(rampData => {
+    const ramp = createRamp(rampData.pos, rampData.size, rampData.rotation, rampData.color);
+    scene.add(ramp);
+    rampObstacles.push(ramp);
+  });
+}
 const holeRadius = 1.5;
 
 // Create a glowing ring around the hole
@@ -1016,12 +1109,89 @@ function updateBallPhysics(delta) {
     return;
   }
 
-  ballMesh.position.add(ballVelocity);
+  // Floor level - ground is at y=0, ball sits at y=0.3
+  let floorLevel = 0;
+  
+  // Check ramps via raycasting
+  let onRamp = false;
+  let surfaceNormal = new THREE.Vector3(0, 1, 0);
+  
+  const rampMeshes = [];
+  rampObstacles.forEach(rampGroup => {
+    if (rampGroup.userData.isRampGroup && rampGroup.userData.rampMesh) {
+      rampGroup.userData.rampMesh.userData.isRamp = true;
+      rampMeshes.push(rampGroup.userData.rampMesh);
+    } else if (rampGroup.userData.isRamp) {
+      rampMeshes.push(rampGroup);
+    }
+  });
+  
+  if (rampMeshes.length > 0) {
+    const rayOrigin = new THREE.Vector3(ballMesh.position.x, ballMesh.position.y + 5, ballMesh.position.z);
+    groundRaycaster.set(rayOrigin, new THREE.Vector3(0, -1, 0));
+    const intersects = groundRaycaster.intersectObjects(rampMeshes, true);
+    if (intersects.length > 0) {
+      const hit = intersects[0];
+      if (hit.point.y > floorLevel) {
+        floorLevel = hit.point.y;
+        onRamp = true;
+        if (hit.face) {
+          surfaceNormal.copy(hit.face.normal);
+          hit.object.localToWorld(surfaceNormal);
+          surfaceNormal.sub(hit.object.position).normalize();
+        }
+      }
+    }
+  }
+  
+  // The target Y position for ball sitting on floor
+  const targetY = floorLevel + 0.3; // floorLevel + ballRadius
+  
+  // Apply horizontal velocity
+  ballMesh.position.x += ballVelocity.x;
+  ballMesh.position.z += ballVelocity.z;
+  
+  // Vertical physics - simple like original ground
+  if (ballMesh.position.y > targetY + 0.01) {
+    // Ball is in the air - apply gravity and move
+    ballVelocity.y -= 0.008;
+    ballMesh.position.y += ballVelocity.y;
+    
+    // Check if landed
+    if (ballMesh.position.y <= targetY) {
+      ballMesh.position.y = targetY;
+      ballVelocity.y = 0;
+    }
+  } else {
+    // Ball is on the floor - lock Y position
+    ballMesh.position.y = targetY;
+    ballVelocity.y = 0;
+  }
+  
+  // Ramp launch physics (only when on ramp)
+  if (onRamp) {
+    const slopeDir = new THREE.Vector3(surfaceNormal.x, 0, surfaceNormal.z).normalize();
+    const slopeStrength = Math.abs(surfaceNormal.y);
+    
+    if (slopeStrength < 0.99) {
+      const slopeForce = 0.004 * (1 - slopeStrength);
+      ballVelocity.x += slopeDir.x * slopeForce;
+      ballVelocity.z += slopeDir.z * slopeForce;
+    }
+    
+    const speed = Math.sqrt(ballVelocity.x * ballVelocity.x + ballVelocity.z * ballVelocity.z);
+    if (speed > 0.08 && ballVelocity.y <= 0) {
+      const moveDir = new THREE.Vector3(ballVelocity.x, 0, ballVelocity.z).normalize();
+      const dot = moveDir.dot(slopeDir);
+      if (dot < -0.3) {
+        ballVelocity.y = speed * 0.5;
+      }
+    }
+  }
 
-  ballMesh.position.y = 0.3;   
-  ballVelocity.y = 0;       
-
-  ballVelocity.multiplyScalar(0.96);
+  // Apply friction to horizontal movement
+  ballVelocity.x *= 0.96;
+  ballVelocity.z *= 0.96;
 
   if (ballVelocity.length() < 0.001) {
     ballVelocity.set(0, 0, 0);
@@ -1109,6 +1279,7 @@ function updateBallPhysics(delta) {
       ballMesh.position.add(pushOut);
     }
   }
+  
 }
 
 
